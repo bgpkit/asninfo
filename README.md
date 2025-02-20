@@ -1,6 +1,6 @@
 # ASN Information Data Uploader
 
-This script fetches the most up-to-date ASN information and save as JSONL file and may upload to S3/R2 bucket if 
+This script fetches the most up-to-date ASN information and saves as JSONL file and may upload to S3/R2 bucket if 
 environment variables are set.
 
 ## Usage
