@@ -2,6 +2,15 @@
 name = "asninfo"
 version = "0.1.0"
 edition = "2021"
+authors = ["Mingwei Zhang <mingwei@bgpkit.com>"]
+readme = "README.md"
+license = "MIT"
+repository = "https://github.com/bgpkit/asninfo"
+documentation = "https://docs.rs/asninfo"
+description = """
+A utility tool to export ASN information to JSON files.
+"""
+keywords = ["bgp", "bgpkit"]
 
 [dependencies]
 bgpkit-commons = "0.7.1"
@@ -9,5 +18,7 @@ serde_json = "1"
 oneio = { version = "0.17.0", features = ["s3"] }
 tracing-subscriber = "0.3"
 tracing = "0.1.40"
+clap = { version = "4.5", features = ["derive"] }
 
 dotenvy = "0.15.7"
+serde = { version = "1.0.210", features = ["derive"] }
