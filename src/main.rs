@@ -16,9 +16,10 @@
 
 use bgpkit_commons::asinfo::AsInfo;
 use clap::Parser;
-
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
+use std::fmt::{Display, Formatter};
+use std::process::exit;
 use tracing::{error, info};
 
 #[derive(Parser)]
@@ -68,14 +69,50 @@ impl From<&AsInfo> for AsInfoSimplified {
     }
 }
 
+#[derive(Clone, Copy)]
+enum ExportFormat {
+    JSON,
+    JSONL,
+    CSV,
+}
+
+impl Display for ExportFormat {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ExportFormat::JSON => {
+                write!(f, "json")
+            }
+            ExportFormat::JSONL => {
+                write!(f, "jsonl")
+            }
+            ExportFormat::CSV => {
+                write!(f, "csv")
+            }
+        }
+    }
+}
+
 fn main() {
     tracing_subscriber::fmt().with_ansi(false).init();
     let cli = Cli::parse();
 
     dotenvy::dotenv().ok();
 
-    let load_population = !cli.simplified;
-    let load_hegemony = !cli.simplified;
+    let format: ExportFormat = if cli.path.contains(".jsonl") {
+        ExportFormat::JSONL
+    } else if cli.path.contains(".csv") {
+        ExportFormat::CSV
+    } else if cli.path.contains(".json") {
+        ExportFormat::JSON
+    } else {
+        error!("unknown format. please choose from csv, json, jsonl format");
+        exit(1);
+    };
+
+    let simplified = cli.simplified || matches!(format, ExportFormat::CSV);
+
+    let load_population = !simplified;
+    let load_hegemony = !simplified;
 
     info!("loading asn info data ...");
     let mut commons = bgpkit_commons::BgpkitCommons::new();
@@ -85,40 +122,64 @@ fn main() {
     commons.load_countries().unwrap();
     let as_info_map = commons.asinfo_all().unwrap();
 
-    let is_jsonl = cli.path.contains(".jsonl");
-    info!(
-        "export format: {}",
-        match is_jsonl {
-            true => "jsonl",
-            false => "json",
-        }
-    );
+    info!("export format: {}", &format);
 
     info!("writing asn info data to '{}' ...", &cli.path);
     let mut writer = oneio::get_writer(&cli.path).unwrap();
     let mut info_vec = as_info_map.values().collect::<Vec<_>>();
     info_vec.sort_by(|a, b| a.asn.cmp(&b.asn));
-    let values_vec: Vec<Value> = match cli.simplified {
-        false => info_vec.into_iter().map(|v| json!(v)).collect(),
-        true => info_vec
-            .into_iter()
-            .map(|v| {
-                let mut info = AsInfoSimplified::from(v);
+
+    match format {
+        ExportFormat::JSON | ExportFormat::JSONL => {
+            let values_vec: Vec<Value> = match simplified {
+                false => info_vec.into_iter().map(|v| json!(v)).collect(),
+                true => info_vec
+                    .into_iter()
+                    .map(|v| {
+                        let mut info = AsInfoSimplified::from(v);
+                        if let Ok(opt_name) = commons.country_by_code(&info.country_code) {
+                            if let Some(name) = opt_name {
+                                info.country_name = name.name
+                            }
+                        }
+                        json!(info)
+                    })
+                    .collect(),
+            };
+            if matches!(format, ExportFormat::JSONL) {
+                for as_info in values_vec {
+                    writeln!(writer, "{}", serde_json::to_string(&as_info).unwrap()).unwrap();
+                }
+            } else {
+                writeln!(writer, "{}", serde_json::to_string(&values_vec).unwrap()).unwrap();
+            }
+        }
+        ExportFormat::CSV => {
+            writeln!(
+                writer,
+                "asn,as_name,org_id,org_name,country_code,country_name,data_source"
+            )
+            .unwrap();
+            for asninfo in info_vec {
+                let mut info = AsInfoSimplified::from(asninfo);
                 if let Ok(opt_name) = commons.country_by_code(&info.country_code) {
                     if let Some(name) = opt_name {
                         info.country_name = name.name
                     }
                 }
-                json!(info)
-            })
-            .collect(),
-    };
-    if is_jsonl {
-        for as_info in values_vec {
-            writeln!(writer, "{}", serde_json::to_string(&as_info).unwrap()).unwrap();
+                writeln!(
+                    writer,
+                    r#"{},"{}","{}","{}","{}","{}","""#,
+                    info.asn,
+                    info.as_name.replace('"', ""),
+                    info.org_id,
+                    info.org_name.replace('"', ""),
+                    info.country_code,
+                    info.country_name
+                )
+                .unwrap();
+            }
         }
-    } else {
-        writeln!(writer, "{}", serde_json::to_string(&values_vec).unwrap()).unwrap();
     }
     drop(writer);
 
