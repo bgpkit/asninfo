@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## v0.2.0 - 2025-02-21
+
+### New Features
+
+* support exporting simplified data in CSV format
+
 ## v0.1.0 - 2025-02-21
 
 Initial release:
