@@ -113,11 +113,12 @@ fn main() {
 
     let load_population = !simplified;
     let load_hegemony = !simplified;
+    let load_peeringdb = !simplified;
 
     info!("loading asn info data ...");
     let mut commons = bgpkit_commons::BgpkitCommons::new();
     commons
-        .load_asinfo(true, load_population, load_hegemony)
+        .load_asinfo(true, load_population, load_hegemony, load_peeringdb)
         .unwrap();
     commons.load_countries().unwrap();
     let as_info_map = commons.asinfo_all().unwrap();
