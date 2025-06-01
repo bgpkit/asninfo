@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## v0.3.1 - 2025-06-01
+
+* update `bgpkit-commons` to `v0.8.1`
+* update `oneio` to `v0.18.1`
+
 ## v0.3.0 - 2025-05-27
 
 * update `bgpkit-commons` to `v0.8.0` to include peeringdb asninfo
