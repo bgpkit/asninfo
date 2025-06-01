@@ -1,6 +1,6 @@
 [package]
 name = "asninfo"
-version = "0.3.0"
+version = "0.3.1"
 edition = "2021"
 authors = ["Mingwei Zhang <mingwei@bgpkit.com>"]
 readme = "README.md"
@@ -13,9 +13,9 @@ A utility tool to export ASN information to JSON files.
 keywords = ["bgp", "bgpkit"]
 
 [dependencies]
-bgpkit-commons = "0.8.0"
+bgpkit-commons = "0.8.1"
 serde_json = "1"
-oneio = { version = "0.17.0", features = ["s3"] }
+oneio = { version = "0.18.1", default-features = false, features = ["lib-core", "s3", "rustls"] }
 tracing-subscriber = "0.3"
 tracing = "0.1.40"
 clap = { version = "4.5", features = ["derive"] }
