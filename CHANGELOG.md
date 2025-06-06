@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## v0.3.2 - 2025-06-06
+
+* update `bgpkit-commons` to `v0.8.2`
+* update `oneio` to `v0.18.2`
+
 ## v0.3.1 - 2025-06-01
 
 * update `bgpkit-commons` to `v0.8.1`
