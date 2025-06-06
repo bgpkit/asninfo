@@ -70,6 +70,7 @@ impl From<&AsInfo> for AsInfoSimplified {
 }
 
 #[derive(Clone, Copy)]
+#[allow(clippy::upper_case_acronyms)]
 enum ExportFormat {
     JSON,
     JSONL,
@@ -138,10 +139,8 @@ fn main() {
                     .into_iter()
                     .map(|v| {
                         let mut info = AsInfoSimplified::from(v);
-                        if let Ok(opt_name) = commons.country_by_code(&info.country_code) {
-                            if let Some(name) = opt_name {
-                                info.country_name = name.name
-                            }
+                        if let Ok(Some(name)) = commons.country_by_code(&info.country_code) {
+                            info.country_name = name.name
                         }
                         json!(info)
                     })
@@ -163,10 +162,8 @@ fn main() {
             .unwrap();
             for asninfo in info_vec {
                 let mut info = AsInfoSimplified::from(asninfo);
-                if let Ok(opt_name) = commons.country_by_code(&info.country_code) {
-                    if let Some(name) = opt_name {
-                        info.country_name = name.name
-                    }
+                if let Ok(Some(name)) = commons.country_by_code(&info.country_code) {
+                    info.country_name = name.name
                 }
                 writeln!(
                     writer,
