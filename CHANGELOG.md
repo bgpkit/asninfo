@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## v0.3.3 - 2025-09-09
+
+* update `bgpkit-commons` to `v0.9.3`
+    * this fixes the peeringdb 403 error issue
+* update `oneio` to `v0.19.0`
+
 ## v0.3.2 - 2025-06-06
 
 * update `bgpkit-commons` to `v0.8.2`
