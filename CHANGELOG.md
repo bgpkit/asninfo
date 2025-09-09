@@ -2,6 +2,10 @@
 
 All notable changes to this project will be documented in this file.
 
+## v0.3.4 - 2025-09-09
+
+* update `bgpkit-commons` to `v0.9.4` to support older Rust versions
+
 ## v0.3.3 - 2025-09-09
 
 * update `bgpkit-commons` to `v0.9.3`

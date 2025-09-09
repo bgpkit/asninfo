@@ -106,7 +106,7 @@ dependencies = [
 
 [[package]]
 name = "asninfo"
-version = "0.3.3"
+version = "0.3.4"
 dependencies = [
  "bgpkit-commons",
  "clap",
@@ -243,9 +243,9 @@ checksum = "72b3254f16251a8381aa12e40e3c4d2f0199f8c6508fbecb9d91f575e0fbb8c6"
 
 [[package]]
 name = "bgpkit-commons"
-version = "0.9.3"
+version = "0.9.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cfd37ec03b0f707d42570fd02eb91671a356f5e559543307c5ba7bbab9e83b6b"
+checksum = "c79b631a4661b5e59106bb2353a013b0a88c5cb53aa8a03cd4ca3f310cae8b01"
 dependencies = [
  "as2org-rs",
  "chrono",
