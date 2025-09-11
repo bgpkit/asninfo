@@ -2,9 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
-## v0.3.4 - 2025-09-09
+## v0.3.4 - 2025-09-10
 
 * update `bgpkit-commons` to `v0.9.4` to support older Rust versions
+* change upload behavior: remove `--upload` CLI flag; uploads are now enabled when `ASNINFO_UPLOAD_PATH` env var is
+  set (S3-compatible target)
+* add optional heartbeat: when `ASNINFO_HEARTBEAT_URL` is set and upload succeeds, a request is sent to signal
+  completion
 
 ## v0.3.3 - 2025-09-09
 
