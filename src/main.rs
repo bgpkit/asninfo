@@ -30,10 +30,6 @@ struct Cli {
     #[clap(default_value = "./asninfo.jsonl")]
     path: String,
 
-    /// Flag to enable upload to S3-compatible object storage
-    #[clap(short, long)]
-    upload: bool,
-
     /// Simplified format
     #[clap(short, long)]
     simplified: bool,
@@ -118,11 +114,15 @@ fn main() {
 
     info!("loading asn info data ...");
     let mut commons = bgpkit_commons::BgpkitCommons::new();
-    commons
-        .load_asinfo(true, load_population, load_hegemony, load_peeringdb)
-        .unwrap();
-    commons.load_countries().unwrap();
-    let as_info_map = commons.asinfo_all().unwrap();
+    if let Err(e) = commons.load_asinfo(true, load_population, load_hegemony, load_peeringdb) {
+        error!("failed to load asn info data: {e}");
+        exit(1);
+    };
+    if let Err(e) = commons.load_countries() {
+        error!("failed to load countries: {e}");
+        exit(2);
+    };
+    let as_info_map = commons.asinfo_all().expect("failed to get asinfo map");
 
     info!("export format: {}", &format);
 
@@ -181,15 +181,30 @@ fn main() {
     }
     drop(writer);
 
-    if cli.upload {
-        if let Ok(path) = std::env::var("ASNINFO_UPLOAD_PATH") {
-            info!("uploading {} to {} ...", &cli.path, path);
-            if oneio::s3_env_check().is_err() {
-                error!("S3 environment variables not set, skipping upload");
-            } else {
-                let (bucket, key) = oneio::s3_url_parse(&path).unwrap();
-                oneio::s3_upload(&bucket, &key, &cli.path).unwrap();
+    if let Ok(upload_path) = std::env::var("ASNINFO_UPLOAD_PATH") {
+        info!("uploading {} to {} ...", &cli.path, upload_path);
+        if oneio::s3_env_check().is_err() {
+            error!("S3 environment variables not set, skipping upload");
+            exit(3);
+        } else {
+            let (bucket, key) = oneio::s3_url_parse(&upload_path).unwrap();
+            match oneio::s3_upload(&bucket, &key, &cli.path) {
+                Ok(_) => {
+                    // try to do send a success message to
+                    if let Ok(heartbeat_url) = dotenvy::var("ASNINFO_HEARTBEAT_URL") {
+                        info!("sending heartbeat to configured URL");
+                        if let Err(e) = oneio::read_to_string(&heartbeat_url) {
+                            error!("failed to send heartbeat: {e}");
+                            exit(4);
+                        }
+                    }
+                }
+                Err(e) => {
+                    error!("failed to upload to destination ({upload_path}): {e}");
+                    exit(5);
+                }
             }
         }
     }
+    info!("asninfo download done");
 }
