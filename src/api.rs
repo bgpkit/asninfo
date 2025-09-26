@@ -1,6 +1,8 @@
 use axum::{
-    extract::{Query, State},
+    extract::{Query, Request as AxumRequest, State},
     http::{Method, StatusCode},
+    middleware::{self, Next},
+    response::Response,
     routing::get,
     Json, Router,
 };
@@ -52,7 +54,30 @@ pub fn build_router(state: AppState) -> Router {
         .route("/lookup", get(get_lookup).post(post_lookup))
         .route("/health", get(health))
         .with_state(state)
+        // log all requests except /health
+        .layer(middleware::from_fn(log_requests))
         .layer(cors)
+}
+
+// Middleware to log requests, skipping /health
+async fn log_requests(req: AxumRequest, next: Next) -> Response {
+    let path = req.uri().path().to_string();
+    if path == "/health" {
+        return next.run(req).await;
+    }
+    let method = req.method().clone();
+    let start = std::time::Instant::now();
+    let response = next.run(req).await;
+    let status = response.status();
+    let elapsed_ms = start.elapsed().as_millis();
+    info!(
+        method = %method,
+        path = %path,
+        status = %status.as_u16(),
+        latency_ms = elapsed_ms,
+        "request"
+    );
+    response
 }
 
 pub fn load_asn_map_out(simplified: bool) -> Result<(HashMap<u32, AsInfoOut>, String), i32> {
