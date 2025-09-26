@@ -14,7 +14,6 @@
 //!
 //! For Cloudflare R2 destination, `AWS_REGION` should be `auto`.
 
-use axum::serve;
 use bgpkit_commons::asinfo::AsInfo;
 use clap::{Parser, Subcommand};
 use serde::{Deserialize, Serialize};
@@ -22,7 +21,6 @@ use serde_json::{json, Value};
 use std::fmt::{Display, Formatter};
 use std::net::SocketAddr;
 use std::process::exit;
-use std::str::FromStr;
 use std::sync::{Arc, Mutex};
 use tracing::{error, info};
 
@@ -265,19 +263,6 @@ fn generate_cmd(path: &str, simplified_flag: bool) -> Result<(), i32> {
     }
     info!("asninfo download done");
     Ok(())
-}
-
-// ==================== Serve command implementation ====================
-
-#[derive(Deserialize)]
-struct LookupQuery {
-    asns: Option<String>,
-    legacy: Option<bool>,
-}
-
-#[derive(Deserialize)]
-struct LookupBody {
-    asns: Vec<u32>,
 }
 
 async fn serve_cmd(bind: &str, refresh_secs: u64, simplified: bool) -> Result<(), i32> {
