@@ -142,20 +142,14 @@ pub fn start_updater(
                 Ok((new_map, ts)) => {
                     // Update both map and updated_at within a single critical section
                     // to avoid exposing an inconsistent state between them.
-                    let mut map_guard = match map.lock() {
-                        Ok(guard) => guard,
-                        Err(poisoned) => {
-                            error!("background updater: map mutex is poisoned, recovering");
-                            poisoned.into_inner()
-                        }
-                    };
-                    let mut ts_guard = match updated_at.lock() {
-                        Ok(guard) => guard,
-                        Err(poisoned) => {
-                            error!("background updater: updated_at mutex is poisoned, recovering");
-                            poisoned.into_inner()
-                        }
-                    };
+                    let mut map_guard = map.lock().unwrap_or_else(|poisoned| {
+                        error!("background updater: map mutex is poisoned, recovering");
+                        poisoned.into_inner()
+                    });
+                    let mut ts_guard = updated_at.lock().unwrap_or_else(|poisoned| {
+                        error!("background updater: updated_at mutex is poisoned, recovering");
+                        poisoned.into_inner()
+                    });
                     *map_guard = new_map;
                     *ts_guard = ts;
                     info!("background updater: ASN data updated");
