@@ -2,9 +2,10 @@
 
 All notable changes to this project will be documented in this file.
 
-## Unreleased - 2025-09-26
+## v0.4.0 - 2025-10-01
 
 ### Added
+
 - New HTTP API server: `asninfo serve` subcommand with CORS enabled and background refresh.
 - Lookup endpoints: `GET /lookup` and `POST /lookup` with optional `legacy=true` response.
 - Health endpoint: `GET /health`.
@@ -12,9 +13,12 @@ All notable changes to this project will be documented in this file.
 - Request logging for HTTP server; requests to `/health` are excluded to reduce noise.
 
 ### Changed
+
 - Documentation: README expanded with commands, HTTP API usage, Docker examples, and environment variables.
-- Clarified that CSV exports always use the simplified schema; `--simplified` flag implies reduced dataset (skips population, hegemony, and PeeringDB data).
-- Docker README: added examples showing how to pass a local .env using `--env-file` or by bind-mounting to `/asninfo/.env`.
+- Clarified that CSV exports always use the simplified schema; `--simplified` flag implies reduced dataset (skips
+  population, hegemony, and PeeringDB data).
+- Docker README: added examples showing how to pass a local .env using `--env-file` or by bind-mounting to
+  `/asninfo/.env`.
 
 ## v0.3.4 - 2025-09-10
 
