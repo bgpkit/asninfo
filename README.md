@@ -108,13 +108,13 @@ asninfo serve --bind 0.0.0.0:8080 --refresh-secs 21600
     - Query parameter asns is a comma-separated list of ASNs.
     - Optional legacy=true to return a legacy array of objects instead of the structured response.
 
-- POST /lookup?legacy=true
+- POST /lookup
     - JSON body: { "asns": [number, ...] }
-    - Optional legacy=true query parameter as above.
+    - Note: legacy=true is only supported on GET /lookup.
 
 ### Responses
 
-Default structured response:
+Default response (full schema plus country_name):
 
 ```json
 [
@@ -122,10 +122,38 @@ Default structured response:
     "asn": 13335,
     "name": "CLOUDFLARENET",
     "country": "US",
-    "country_name": "United States"
+    "country_name": "United States",
+    "as2org": {
+      "org_id": "CLOUD14-ARIN",
+      "org_name": "Cloudflare, Inc.",
+      "name": "CLOUDFLARENET",
+      "country": "US"
+    },
+    "hegemony": {
+      "asn": 13335,
+      "ipv4": 0.0018,
+      "ipv6": 0.0084
+    },
+    "peeringdb": {
+      "asn": 13335,
+      "name": "Cloudflare",
+      "aka": "",
+      "name_long": "",
+      "website": "https://www.cloudflare.com",
+      "irr_as_set": "AS13335:AS-CLOUDFLARE"
+    },
+    "population": {
+      "user_count": 10,
+      "sample_count": 127,
+      "percent_global": 0.0,
+      "percent_country": 0.02
+    }
   }
 ]
 ```
+
+Note: When the server runs with --simplified, heavy datasets (population, hegemony, PeeringDB) are omitted and will be
+null in responses.
 
 Legacy response (when legacy=true) returns an array of objects compatible with the previous consumer format.
 
