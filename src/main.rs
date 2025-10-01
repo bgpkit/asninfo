@@ -15,24 +15,49 @@
 //! For Cloudflare R2 destination, `AWS_REGION` should be `auto`.
 
 use bgpkit_commons::asinfo::AsInfo;
-use clap::Parser;
+use clap::{Parser, Subcommand};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::fmt::{Display, Formatter};
+use std::net::SocketAddr;
 use std::process::exit;
+use std::sync::{Arc, Mutex};
 use tracing::{error, info};
+
+mod api;
+use crate::api::{build_router, load_asn_map_out, start_updater, AppState};
 
 #[derive(Parser)]
 #[clap(author, version, about, long_about = None)]
 #[clap(propagate_version = true)]
 struct Cli {
-    /// Export data path
-    #[clap(default_value = "./asninfo.jsonl")]
-    path: String,
+    #[clap(subcommand)]
+    command: Commands,
+}
 
-    /// Simplified format
-    #[clap(short, long)]
-    simplified: bool,
+#[derive(Subcommand, Debug, Clone)]
+enum Commands {
+    /// Generate ASN info dump file (JSON/JSONL/CSV) and optionally upload
+    Generate {
+        /// Export data path; determines format by extension (json, jsonl, csv)
+        #[clap(default_value = "./asninfo.jsonl")]
+        path: String,
+        /// Simplified format (also implied when CSV)
+        #[clap(short, long)]
+        simplified: bool,
+    },
+    /// Serve an HTTP API for ASN info lookup
+    Serve {
+        /// Bind address, e.g., 0.0.0.0:8080
+        #[clap(short, long, default_value = "0.0.0.0:8080")]
+        bind: String,
+        /// Refresh interval in seconds for background updates, default 21600 (6 hours)
+        #[clap(long, default_value_t = 21600)]
+        refresh_secs: u64,
+        /// Use simplified mode (skip heavy datasets); default false
+        #[clap(long, default_value_t = false)]
+        simplified: bool,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -89,24 +114,44 @@ impl Display for ExportFormat {
     }
 }
 
-fn main() {
+#[tokio::main]
+async fn main() {
     tracing_subscriber::fmt().with_ansi(false).init();
-    let cli = Cli::parse();
-
     dotenvy::dotenv().ok();
 
-    let format: ExportFormat = if cli.path.contains(".jsonl") {
+    let cli = Cli::parse();
+
+    match cli.command {
+        Commands::Generate { path, simplified } => {
+            if let Err(code) = generate_cmd(&path, simplified) {
+                exit(code);
+            }
+        }
+        Commands::Serve {
+            bind,
+            refresh_secs,
+            simplified,
+        } => {
+            if let Err(code) = serve_cmd(&bind, refresh_secs, simplified).await {
+                exit(code);
+            }
+        }
+    }
+}
+
+fn generate_cmd(path: &str, simplified_flag: bool) -> Result<(), i32> {
+    let format: ExportFormat = if path.contains(".jsonl") {
         ExportFormat::JSONL
-    } else if cli.path.contains(".csv") {
+    } else if path.contains(".csv") {
         ExportFormat::CSV
-    } else if cli.path.contains(".json") {
+    } else if path.contains(".json") {
         ExportFormat::JSON
     } else {
         error!("unknown format. please choose from csv, json, jsonl format");
-        exit(1);
+        return Err(1);
     };
 
-    let simplified = cli.simplified || matches!(format, ExportFormat::CSV);
+    let simplified = simplified_flag || matches!(format, ExportFormat::CSV);
 
     let load_population = !simplified;
     let load_hegemony = !simplified;
@@ -116,18 +161,24 @@ fn main() {
     let mut commons = bgpkit_commons::BgpkitCommons::new();
     if let Err(e) = commons.load_asinfo(true, load_population, load_hegemony, load_peeringdb) {
         error!("failed to load asn info data: {e}");
-        exit(1);
+        return Err(1);
     };
     if let Err(e) = commons.load_countries() {
         error!("failed to load countries: {e}");
-        exit(2);
+        return Err(2);
     };
     let as_info_map = commons.asinfo_all().expect("failed to get asinfo map");
 
     info!("export format: {}", &format);
 
-    info!("writing asn info data to '{}' ...", &cli.path);
-    let mut writer = oneio::get_writer(&cli.path).unwrap();
+    info!("writing asn info data to '{}' ...", &path);
+    let mut writer = match oneio::get_writer(&path) {
+        Ok(w) => w,
+        Err(e) => {
+            error!("failed to open writer for path '{}': {}", path, e);
+            return Err(1);
+        }
+    };
     let mut info_vec = as_info_map.values().collect::<Vec<_>>();
     info_vec.sort_by(|a, b| a.asn.cmp(&b.asn));
 
@@ -148,10 +199,32 @@ fn main() {
             };
             if matches!(format, ExportFormat::JSONL) {
                 for as_info in values_vec {
-                    writeln!(writer, "{}", serde_json::to_string(&as_info).unwrap()).unwrap();
+                    match serde_json::to_string(&as_info) {
+                        Ok(s) => {
+                            if writeln!(writer, "{}", s).is_err() {
+                                error!("failed to write to file");
+                                return Err(1);
+                            }
+                        }
+                        Err(e) => {
+                            error!("failed to serialize AS info: {}", e);
+                            return Err(1);
+                        }
+                    }
                 }
             } else {
-                writeln!(writer, "{}", serde_json::to_string(&values_vec).unwrap()).unwrap();
+                match serde_json::to_string(&values_vec) {
+                    Ok(s) => {
+                        if writeln!(writer, "{}", s).is_err() {
+                            error!("failed to write to file");
+                            return Err(1);
+                        }
+                    }
+                    Err(e) => {
+                        error!("failed to serialize AS info vector: {}", e);
+                        return Err(1);
+                    }
+                }
             }
         }
         ExportFormat::CSV => {
@@ -182,29 +255,70 @@ fn main() {
     drop(writer);
 
     if let Ok(upload_path) = std::env::var("ASNINFO_UPLOAD_PATH") {
-        info!("uploading {} to {} ...", &cli.path, upload_path);
+        info!("uploading {} to {} ...", &path, upload_path);
         if oneio::s3_env_check().is_err() {
             error!("S3 environment variables not set, skipping upload");
-            exit(3);
+            return Err(3);
         } else {
             let (bucket, key) = oneio::s3_url_parse(&upload_path).unwrap();
-            match oneio::s3_upload(&bucket, &key, &cli.path) {
+            match oneio::s3_upload(&bucket, &key, &path) {
                 Ok(_) => {
                     // try to do send a success message to
                     if let Ok(heartbeat_url) = dotenvy::var("ASNINFO_HEARTBEAT_URL") {
                         info!("sending heartbeat to configured URL");
                         if let Err(e) = oneio::read_to_string(&heartbeat_url) {
                             error!("failed to send heartbeat: {e}");
-                            exit(4);
+                            return Err(4);
                         }
                     }
                 }
                 Err(e) => {
                     error!("failed to upload to destination ({upload_path}): {e}");
-                    exit(5);
+                    return Err(5);
                 }
             }
         }
     }
     info!("asninfo download done");
+    Ok(())
+}
+
+async fn serve_cmd(bind: &str, refresh_secs: u64, simplified: bool) -> Result<(), i32> {
+    let (initial_map, updated_at_str) = load_asn_map_out(simplified)?;
+    let map = Arc::new(Mutex::new(initial_map));
+    let updated_at = Arc::new(Mutex::new(updated_at_str));
+
+    // config: max ASNs per request (default 100)
+    let max_asns: usize = dotenvy::var("ASNINFO_MAX_ASNS")
+        .ok()
+        .and_then(|s| s.parse::<usize>().ok())
+        .unwrap_or(100);
+
+    let state = AppState {
+        map: map.clone(),
+        updated_at: updated_at.clone(),
+        max_asns,
+    };
+
+    // start background updater
+    let _handle = start_updater(map.clone(), updated_at.clone(), refresh_secs, simplified);
+
+    // build API router
+    let app = build_router(state);
+
+    let addr: SocketAddr = bind.parse().map_err(|e| {
+        error!("invalid bind address {bind}: {e}");
+        6
+    })?;
+    let listener = tokio::net::TcpListener::bind(addr).await.map_err(|e| {
+        error!("failed to bind {bind}: {e}");
+        6
+    })?;
+    info!("serving on http://{}", addr);
+    axum::serve(listener, app).await.map_err(|e| {
+        error!("server error: {e}");
+        7
+    })?;
+
+    Ok(())
 }
