@@ -119,6 +119,8 @@ pub fn load_asn_map_out(simplified: bool) -> Result<(HashMap<u32, AsInfoOut>, St
     Ok((out, updated_at))
 }
 
+const MINIMUM_UPDATER_INTERVAL_SECS: u64 = 3600;
+
 pub fn start_updater(
     map: Arc<Mutex<HashMap<u32, AsInfoOut>>>,
     updated_at: Arc<Mutex<String>>,
@@ -126,20 +128,18 @@ pub fn start_updater(
     simplified: bool,
 ) -> JoinHandle<()> {
     tokio::spawn(async move {
-        let interval = Duration::from_secs(refresh_secs.max(3600)); // minimum 1 hour
+        let interval = Duration::from_secs(refresh_secs.max(MINIMUM_UPDATER_INTERVAL_SECS)); // minimum 1 hour
         loop {
             sleep(interval).await;
             info!("background updater: refreshing ASN data ...");
             match load_asn_map_out(simplified) {
                 Ok((new_map, ts)) => {
-                    {
-                        let mut guard = map.lock().unwrap();
-                        *guard = new_map;
-                    }
-                    {
-                        let mut ts_guard = updated_at.lock().unwrap();
-                        *ts_guard = ts;
-                    }
+                    // Update both map and updated_at within a single critical section
+                    // to avoid exposing an inconsistent state between them.
+                    let mut guard = map.lock().unwrap();
+                    let mut ts_guard = updated_at.lock().unwrap();
+                    *guard = new_map;
+                    *ts_guard = ts;
                     info!("background updater: ASN data updated");
                 }
                 Err(e) => {
