@@ -95,7 +95,13 @@ pub fn load_asn_map_out(simplified: bool) -> Result<(HashMap<u32, AsInfoOut>, St
         error!("failed to load countries: {e}");
         return Err(2);
     };
-    let as_info_map = commons.asinfo_all().expect("failed to get asinfo map");
+    let as_info_map = match commons.asinfo_all() {
+        Ok(map) => map,
+        Err(e) => {
+            error!("failed to get asinfo map: {e}");
+            return Err(3);
+        }
+    };
 
     // build enriched map with country_name
     let mut out: HashMap<u32, AsInfoOut> = HashMap::with_capacity(as_info_map.len());
@@ -136,9 +142,21 @@ pub fn start_updater(
                 Ok((new_map, ts)) => {
                     // Update both map and updated_at within a single critical section
                     // to avoid exposing an inconsistent state between them.
-                    let mut guard = map.lock().unwrap();
-                    let mut ts_guard = updated_at.lock().unwrap();
-                    *guard = new_map;
+                    let mut map_guard = match map.lock() {
+                        Ok(guard) => guard,
+                        Err(poisoned) => {
+                            error!("background updater: map mutex is poisoned, recovering");
+                            poisoned.into_inner()
+                        }
+                    };
+                    let mut ts_guard = match updated_at.lock() {
+                        Ok(guard) => guard,
+                        Err(poisoned) => {
+                            error!("background updater: updated_at mutex is poisoned, recovering");
+                            poisoned.into_inner()
+                        }
+                    };
+                    *map_guard = new_map;
                     *ts_guard = ts;
                     info!("background updater: ASN data updated");
                 }
@@ -151,7 +169,11 @@ pub fn start_updater(
 }
 
 async fn health(State(state): State<AppState>) -> Json<Value> {
-    let updated_at = state.updated_at.lock().unwrap().clone();
+    let updated_at = state
+        .updated_at
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .clone();
     Json(json!({
         "status": "ok",
         "updatedAt": updated_at,
@@ -193,7 +215,7 @@ fn convert_to_legacy(list: Vec<AsInfoOut>) -> Vec<Value> {
 async fn get_lookup(
     State(state): State<AppState>,
     Query(q): Query<LookupQuery>,
-) -> Result<Json<Value>, StatusCode> {
+) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
     let asns: Vec<u32> = q
         .asns
         .clone()
@@ -203,84 +225,79 @@ async fn get_lookup(
         .collect();
 
     if asns.is_empty() {
-        error!("/lookup GET: empty or invalid 'asns' query param");
-        return Err(StatusCode::BAD_REQUEST);
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(json!({"error": "no valid ASNs provided in 'asns' query parameter"})),
+        ));
     }
+
     if asns.len() > state.max_asns {
-        error!(
-            "/lookup GET: too many ASNs: {} > {}",
-            asns.len(),
-            state.max_asns
-        );
-        return Err(StatusCode::PAYLOAD_TOO_LARGE);
+        return Err((
+            StatusCode::PAYLOAD_TOO_LARGE,
+            Json(
+                json!({"error": format!("payload too large, max ASNs per request is {}", state.max_asns)}),
+            ),
+        ));
     }
 
-    let legacy = q.legacy.unwrap_or(false);
-    let data_full = lookup(&state, &asns);
-    let updated_at = state.updated_at.lock().unwrap().clone();
+    let map_guard = state.map.lock().map_err(|_| {
+        error!("get_lookup: map mutex is poisoned");
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": "internal server error"})),
+        )
+    })?;
 
-    let data_values: Vec<Value> = if legacy {
-        convert_to_legacy(data_full)
+    let mut found = Vec::with_capacity(asns.len());
+    for asn in asns {
+        if let Some(info) = map_guard.get(&asn) {
+            found.push(info.clone());
+        }
+    }
+
+    let use_legacy = q.legacy.unwrap_or(false);
+    let results = if use_legacy {
+        json!(convert_to_legacy(found))
     } else {
-        data_full.into_iter().map(|o| json!(o)).collect()
+        json!(found)
     };
 
-    let resp = json!({
-        "data": data_values,
-        "count": data_values.len(),
-        "updatedAt": updated_at,
-        "page": 0,
-        "page_size": asns.len(),
-    });
-    Ok(Json(resp))
+    Ok(Json(results))
 }
 
 async fn post_lookup(
     State(state): State<AppState>,
-    Query(q): Query<LookupQuery>,
     Json(body): Json<LookupBody>,
-) -> Result<Json<Value>, StatusCode> {
-    let legacy = q.legacy.unwrap_or(false);
-    let asns = body.asns;
-    if asns.is_empty() {
-        error!("/lookup POST: empty asns body");
-        return Err(StatusCode::BAD_REQUEST);
+) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    if body.asns.is_empty() {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(json!({"error": "no ASNs provided in request body"})),
+        ));
     }
-    if asns.len() > state.max_asns {
-        error!(
-            "/lookup POST: too many ASNs: {} > {}",
-            asns.len(),
-            state.max_asns
-        );
-        return Err(StatusCode::PAYLOAD_TOO_LARGE);
+    if body.asns.len() > state.max_asns {
+        return Err((
+            StatusCode::PAYLOAD_TOO_LARGE,
+            Json(
+                json!({"error": format!("payload too large, max ASNs per request is {}", state.max_asns)}),
+            ),
+        ));
     }
 
-    let data_full = lookup(&state, &asns);
-    let updated_at = state.updated_at.lock().unwrap().clone();
+    let map_guard = state.map.lock().map_err(|_| {
+        error!("post_lookup: map mutex is poisoned");
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": "internal server error"})),
+        )
+    })?;
 
-    let data_values: Vec<Value> = if legacy {
-        convert_to_legacy(data_full)
-    } else {
-        data_full.into_iter().map(|o| json!(o)).collect()
-    };
-
-    let resp = json!({
-        "data": data_values,
-        "count": data_values.len(),
-        "updatedAt": updated_at,
-        "page": 0,
-        "page_size": asns.len(),
-    });
-    Ok(Json(resp))
-}
-
-fn lookup(state: &AppState, asns: &[u32]) -> Vec<AsInfoOut> {
-    let map = state.map.lock().unwrap();
-    let mut res = Vec::with_capacity(asns.len());
-    for asn in asns {
-        if let Some(info) = map.get(asn) {
-            res.push(info.clone());
+    let mut found = Vec::with_capacity(body.asns.len());
+    for asn in body.asns {
+        if let Some(info) = map_guard.get(&asn) {
+            found.push(info.clone());
         }
     }
-    res
+
+    Ok(Json(json!(found)))
 }

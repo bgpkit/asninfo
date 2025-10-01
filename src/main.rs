@@ -172,7 +172,13 @@ fn generate_cmd(path: &str, simplified_flag: bool) -> Result<(), i32> {
     info!("export format: {}", &format);
 
     info!("writing asn info data to '{}' ...", &path);
-    let mut writer = oneio::get_writer(&path).unwrap();
+    let mut writer = match oneio::get_writer(&path) {
+        Ok(w) => w,
+        Err(e) => {
+            error!("failed to open writer for path '{}': {}", path, e);
+            return Err(1);
+        }
+    };
     let mut info_vec = as_info_map.values().collect::<Vec<_>>();
     info_vec.sort_by(|a, b| a.asn.cmp(&b.asn));
 
@@ -193,10 +199,32 @@ fn generate_cmd(path: &str, simplified_flag: bool) -> Result<(), i32> {
             };
             if matches!(format, ExportFormat::JSONL) {
                 for as_info in values_vec {
-                    writeln!(writer, "{}", serde_json::to_string(&as_info).unwrap()).unwrap();
+                    match serde_json::to_string(&as_info) {
+                        Ok(s) => {
+                            if writeln!(writer, "{}", s).is_err() {
+                                error!("failed to write to file");
+                                return Err(1);
+                            }
+                        }
+                        Err(e) => {
+                            error!("failed to serialize AS info: {}", e);
+                            return Err(1);
+                        }
+                    }
                 }
             } else {
-                writeln!(writer, "{}", serde_json::to_string(&values_vec).unwrap()).unwrap();
+                match serde_json::to_string(&values_vec) {
+                    Ok(s) => {
+                        if writeln!(writer, "{}", s).is_err() {
+                            error!("failed to write to file");
+                            return Err(1);
+                        }
+                    }
+                    Err(e) => {
+                        error!("failed to serialize AS info vector: {}", e);
+                        return Err(1);
+                    }
+                }
             }
         }
         ExportFormat::CSV => {
