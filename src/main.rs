@@ -71,16 +71,6 @@ pub struct AsInfoSimplified {
     pub data_source: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct LookupResponse<T> {
-    data: Vec<T>,
-    count: usize,
-    #[serde(rename = "updatedAt")]
-    updated_at: String,
-    page: usize,
-    page_size: usize,
-}
-
 impl From<&AsInfo> for AsInfoSimplified {
     fn from(value: &AsInfo) -> Self {
         let (org_id, org_name) = match &value.as2org {
