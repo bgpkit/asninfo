@@ -117,20 +117,14 @@ asninfo serve --bind 0.0.0.0:8080 --refresh-secs 21600
 Default structured response:
 
 ```json
-{
-  "data": [
-    {
-      "asn": 13335,
-      "name": "CLOUDFLARENET",
-      "country": "US",
-      "country_name": "United States"
-    }
-  ],
-  "count": 1,
-  "updatedAt": "2025-01-01T00:00:00.000Z",
-  "page": 1,
-  "page_size": 100
-}
+[
+  {
+    "asn": 13335,
+    "name": "CLOUDFLARENET",
+    "country": "US",
+    "country_name": "United States"
+  }
+]
 ```
 
 Legacy response (when legacy=true) returns an array of objects compatible with the previous consumer format.
@@ -148,76 +142,70 @@ curl -X POST 'http://localhost:8080/lookup' \
 ```
 
 ```json
-{
-  "count": 2,
-  "data": [
-    {
-      "as2org": {
-        "country": "US",
-        "name": "CLOUDFLARENET",
-        "org_id": "CLOUD14-ARIN",
-        "org_name": "Cloudflare, Inc."
-      },
-      "asn": 13335,
+[
+  {
+    "as2org": {
       "country": "US",
-      "country_name": "United States",
-      "hegemony": {
-        "asn": 13335,
-        "ipv4": 0.0017993252336435785,
-        "ipv6": 0.008380104743151566
-      },
       "name": "CLOUDFLARENET",
-      "peeringdb": {
-        "aka": "",
-        "asn": 13335,
-        "irr_as_set": "AS13335:AS-CLOUDFLARE",
-        "name": "Cloudflare",
-        "name_long": "",
-        "website": "https://www.cloudflare.com"
-      },
-      "population": {
-        "percent_country": 0.02,
-        "percent_global": 0.0,
-        "sample_count": 127,
-        "user_count": 10
-      }
+      "org_id": "CLOUD14-ARIN",
+      "org_name": "Cloudflare, Inc."
     },
-    {
-      "as2org": {
-        "country": "US",
-        "name": "GOOGLE",
-        "org_id": "GOGL-ARIN",
-        "org_name": "Google LLC"
-      },
-      "asn": 15169,
-      "country": "US",
-      "country_name": "United States",
-      "hegemony": {
-        "asn": 15169,
-        "ipv4": 0.0072255134909779304,
-        "ipv6": 0.002685539203529714
-      },
-      "name": "GOOGLE",
-      "peeringdb": {
-        "aka": "Google, YouTube (for Google Fiber see AS16591 record)",
-        "asn": 15169,
-        "irr_as_set": "RADB::AS-GOOGLE",
-        "name": "Google LLC",
-        "name_long": "",
-        "website": "https://about.google/intl/en/"
-      },
-      "population": {
-        "percent_country": 0.01,
-        "percent_global": 0.0,
-        "sample_count": 740,
-        "user_count": 521
-      }
+    "asn": 13335,
+    "country": "US",
+    "country_name": "United States",
+    "hegemony": {
+      "asn": 13335,
+      "ipv4": 0.0017993252336435785,
+      "ipv6": 0.008380104743151566
+    },
+    "name": "CLOUDFLARENET",
+    "peeringdb": {
+      "aka": "",
+      "asn": 13335,
+      "irr_as_set": "AS13335:AS-CLOUDFLARE",
+      "name": "Cloudflare",
+      "name_long": "",
+      "website": "https://www.cloudflare.com"
+    },
+    "population": {
+      "percent_country": 0.02,
+      "percent_global": 0.0,
+      "sample_count": 127,
+      "user_count": 10
     }
-  ],
-  "page": 0,
-  "page_size": 2,
-  "updatedAt": "2025-09-26T21:25:10.902Z"
-}
+  },
+  {
+    "as2org": {
+      "country": "US",
+      "name": "GOOGLE",
+      "org_id": "GOGL-ARIN",
+      "org_name": "Google LLC"
+    },
+    "asn": 15169,
+    "country": "US",
+    "country_name": "United States",
+    "hegemony": {
+      "asn": 15169,
+      "ipv4": 0.0072255134909779304,
+      "ipv6": 0.002685539203529714
+    },
+    "name": "GOOGLE",
+    "peeringdb": {
+      "aka": "Google, YouTube (for Google Fiber see AS16591 record)",
+      "asn": 15169,
+      "irr_as_set": "RADB::AS-GOOGLE",
+      "name": "Google LLC",
+      "name_long": "",
+      "website": "https://about.google/intl/en/"
+    },
+    "population": {
+      "percent_country": 0.01,
+      "percent_global": 0.0,
+      "sample_count": 740,
+      "user_count": 521
+    }
+  }
+]
 ```
 
 ## CSV simplified schema
