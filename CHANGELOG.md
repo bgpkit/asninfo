@@ -2,7 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
-## v0.4.1 -2025-10-29
+## v0.4.2 - 2025-10-29
+
+* update `bgpkit-commons` to `v0.9.5` to address CAIDA as2org dataset loading issue
+
+## v0.4.1 YANKED - 2025-10-29
 
 * add `Cargo.toml` to docker image for reproducible builds
 * update dependencies
