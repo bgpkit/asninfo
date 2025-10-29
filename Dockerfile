@@ -14,7 +14,7 @@ COPY ./Cargo.lock .
 RUN cargo build --release --all-features
 
 # our final base
-FROM debian:bookworm-slim
+FROM debian:trixie-slim
 
 # copy the build artifact from the build stage
 COPY --from=build /my_project/target/release/asninfo /usr/local/bin/asninfo
