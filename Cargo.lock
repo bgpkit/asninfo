@@ -107,6 +107,7 @@ dependencies = [
  "dotenvy",
  "http",
  "oneio",
+ "rustls",
  "serde",
  "serde_json",
  "tokio",
