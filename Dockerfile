@@ -1,5 +1,5 @@
 # select build image
-FROM rust:1.85.1 AS build
+FROM rust:1.90.0 AS build
 
 # create a new empty shell project
 RUN USER=root cargo new --bin my_project
@@ -8,6 +8,7 @@ WORKDIR /my_project
 # copy your source tree
 COPY ./src ./src
 COPY ./Cargo.toml .
+COPY ./Cargo.lock .
 
 # build for release
 RUN cargo build --release --all-features

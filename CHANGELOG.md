@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## v0.4.1 -2025-10-29
+
+* add `Cargo.toml` to docker image for reproducible builds
+* update dependencies
+
 ## v0.4.0 - 2025-10-01
 
 ### Added
