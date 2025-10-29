@@ -114,8 +114,25 @@ impl Display for ExportFormat {
     }
 }
 
+fn ensure_rustls_provider() {
+    use rustls::crypto::{aws_lc_rs, CryptoProvider};
+
+    if CryptoProvider::get_default().is_none() {
+        aws_lc_rs::default_provider()
+            .install_default()
+            .expect("failed to install rustls crypto provider");
+    }
+}
+
+fn sanitize_url(raw: &str) -> String {
+    raw.trim()
+        .trim_matches(|c| c == '"' || c == '\'')
+        .to_string()
+}
+
 #[tokio::main]
 async fn main() {
+    ensure_rustls_provider();
     tracing_subscriber::fmt().with_ansi(false).init();
     dotenvy::dotenv().ok();
 
@@ -264,7 +281,12 @@ fn generate_cmd(path: &str, simplified_flag: bool) -> Result<(), i32> {
             match oneio::s3_upload(&bucket, &key, &path) {
                 Ok(_) => {
                     // try to do send a success message to
-                    if let Ok(heartbeat_url) = dotenvy::var("ASNINFO_HEARTBEAT_URL") {
+                    if let Ok(raw_url) = dotenvy::var("ASNINFO_HEARTBEAT_URL") {
+                        let heartbeat_url = sanitize_url(&raw_url);
+                        if heartbeat_url.is_empty() {
+                            error!("heartbeat URL is empty after sanitization");
+                            return Err(4);
+                        }
                         info!("sending heartbeat to configured URL");
                         if let Err(e) = oneio::read_to_string(&heartbeat_url) {
                             error!("failed to send heartbeat: {e}");
