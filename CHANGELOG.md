@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## v0.4.3 - 2025-10-29
+
+* update `bgpkit-commons`, `oneio`, and `peeringdb-rs` to resolve potential rustls provider issue
+* remove unnecessary rustls dependency and auxiliary code
+
 ## v0.4.2 - 2025-10-29
 
 * update `bgpkit-commons` to `v0.9.5` to address CAIDA as2org dataset loading issue
