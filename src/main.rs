@@ -114,16 +114,6 @@ impl Display for ExportFormat {
     }
 }
 
-fn ensure_rustls_provider() {
-    use rustls::crypto::{aws_lc_rs, CryptoProvider};
-
-    if CryptoProvider::get_default().is_none() {
-        aws_lc_rs::default_provider()
-            .install_default()
-            .expect("failed to install rustls crypto provider");
-    }
-}
-
 fn sanitize_url(raw: &str) -> String {
     raw.trim()
         .trim_matches(|c| c == '"' || c == '\'')
@@ -132,7 +122,6 @@ fn sanitize_url(raw: &str) -> String {
 
 #[tokio::main]
 async fn main() {
-    ensure_rustls_provider();
     tracing_subscriber::fmt().with_ansi(false).init();
     dotenvy::dotenv().ok();
 
