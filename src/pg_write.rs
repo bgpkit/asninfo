@@ -71,7 +71,13 @@ const COPY_SQL: &str = "COPY asninfo.current_staging (asn, name, country, countr
 
 const INGEST_INSERT_SQL: &str = "INSERT INTO asninfo.ingest_run (task, status, row_count, data_as_of, source_revision, started_at, finished_at, duration_secs, error) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)";
 
-const PG_TRGM_PROBE_SQL: &str = "SELECT 1 FROM pg_extension WHERE extname = 'pg_trgm'";
+const PG_TRGM_SCHEMA_SQL: &str = "SELECT n.nspname FROM pg_extension e JOIN pg_namespace n ON e.extnamespace = n.oid WHERE e.extname = 'pg_trgm'";
+
+/// Session-level advisory lock key (0x41534E494E464F21, ASCII "ASNINFO!") held
+/// for the whole load: concurrent `pg-write` runs share the staging table and
+/// would interfere, so they serialize on this lock. Released automatically
+/// when the connection closes.
+const ADVISORY_LOCK_KEY: i64 = 0x4153_4E49_4E46_4F21;
 
 /// Bulk-write the full ASN info dataset into PostgreSQL.
 ///
@@ -117,6 +123,11 @@ async fn execute_pg_write(
             error!("postgres connection error: {e}");
         }
     });
+    // Serialize concurrent runs before any DDL/COPY work happens.
+    client
+        .execute("SELECT pg_advisory_lock($1)", &[&ADVISORY_LOCK_KEY])
+        .await
+        .map_err(|e| (15, format!("failed to acquire advisory lock: {e}")))?;
 
     run_load(&mut client, &commons, &infos, data_as_of, started_at).await
 }
@@ -201,6 +212,22 @@ async fn run_load(
         .map_err(|e| (15, format!("failed to finish COPY: {e}")))?;
     info!("COPY complete: {copied_rows} rows in staging table");
 
+    // Guard against replacing a healthy table with a broken snapshot: an
+    // empty load, or one with fewer than half the currently loaded rows, is
+    // almost certainly a source failure, not a legitimate refresh.
+    let existing_rows = if table_exists(client, "asninfo.current").await? {
+        let n: i64 = client
+            .query_one("SELECT count(*) FROM asninfo.current", &[])
+            .await
+            .map_err(|e| (15, format!("failed to count asninfo.current rows: {e}")))?
+            .get(0);
+        Some(n)
+    } else {
+        None
+    };
+    check_swap_safety(existing_rows, copied_rows)
+        .map_err(|message| (15, format!("{message} (staging table left for inspection)")))?;
+
     // Integrity indexes: failure here is a hard error (the leftover staging
     // table is dropped by the next run).
     client
@@ -223,15 +250,20 @@ async fn run_load(
 
     // Trigram GIN indexes for name/org search: only when the pg_trgm
     // extension is installed. Otherwise degrade gracefully (search falls back
-    // to sequential scans) and log a warning.
-    let pg_trgm = pg_trgm_available(client).await?;
-    if pg_trgm {
+    // to sequential scans) and log a warning. The operator class is qualified
+    // with the extension's actual namespace so a non-public install works.
+    let pg_trgm_schema = pg_trgm_schema(client).await?;
+    if let Some(schema) = &pg_trgm_schema {
         for stmt in [
-            "CREATE INDEX current_staging_name_trgm_idx ON asninfo.current_staging USING gin (name gin_trgm_ops)",
-            "CREATE INDEX current_staging_org_name_trgm_idx ON asninfo.current_staging USING gin (org_name gin_trgm_ops)",
+            format!(
+                "CREATE INDEX current_staging_name_trgm_idx ON asninfo.current_staging USING gin (name {schema}.gin_trgm_ops)"
+            ),
+            format!(
+                "CREATE INDEX current_staging_org_name_trgm_idx ON asninfo.current_staging USING gin (org_name {schema}.gin_trgm_ops)"
+            ),
         ] {
             client
-                .batch_execute(stmt)
+                .batch_execute(&stmt)
                 .await
                 .map_err(|e| (15, format!("failed to create trigram index on staging: {e}")))?;
         }
@@ -262,7 +294,7 @@ async fn run_load(
     )
     .await
     .map_err(|e| (15, format!("failed to rename country index: {e}")))?;
-    if pg_trgm {
+    if pg_trgm_schema.is_some() {
         tx.batch_execute(
             "ALTER INDEX asninfo.current_staging_name_trgm_idx RENAME TO current_name_trgm_idx",
         )
@@ -317,13 +349,38 @@ async fn ensure_schema(client: &tokio_postgres::Client) -> Result<(), (i32, Stri
     Ok(())
 }
 
-/// Check whether the `pg_trgm` extension is installed in the target database.
-async fn pg_trgm_available(client: &tokio_postgres::Client) -> Result<bool, (i32, String)> {
+async fn table_exists(client: &tokio_postgres::Client, name: &str) -> Result<bool, (i32, String)> {
+    let exists: bool = client
+        .query_one("SELECT to_regclass($1) IS NOT NULL", &[&name])
+        .await
+        .map_err(|e| (15, format!("failed to check for table {name}: {e}")))?
+        .get(0);
+    Ok(exists)
+}
+
+/// Refuse to replace a healthy table with a broken snapshot: a new dataset
+/// with zero rows, or with fewer than half the currently loaded rows, is
+/// treated as a source failure rather than a legitimate refresh.
+fn check_swap_safety(existing_rows: Option<i64>, new_rows: u64) -> Result<(), String> {
+    match existing_rows {
+        Some(existing) if existing > 0 && new_rows < existing as u64 / 2 => Err(format!(
+            "refusing to swap: new dataset has {new_rows} rows vs {existing} currently loaded (less than half)"
+        )),
+        None if new_rows == 0 => {
+            Err("refusing to swap: loaded dataset is empty".to_string())
+        }
+        _ => Ok(()),
+    }
+}
+
+/// Resolve the schema (namespace) the `pg_trgm` extension is installed into,
+/// or `None` when the extension is not installed in the target database.
+async fn pg_trgm_schema(client: &tokio_postgres::Client) -> Result<Option<String>, (i32, String)> {
     let row = client
-        .query_opt(PG_TRGM_PROBE_SQL, &[])
+        .query_opt(PG_TRGM_SCHEMA_SQL, &[])
         .await
         .map_err(|e| (15, format!("failed to probe pg_trgm extension: {e}")))?;
-    Ok(row.is_some())
+    Ok(row.map(|r| r.get(0)))
 }
 
 /// Best-effort provenance record for a failed run. Logs warnings only; it
@@ -356,8 +413,8 @@ async fn record_error_run(database_url: &str, started_at: DateTime<Utc>, message
             &[
                 &"pg_write",
                 &"error",
-                &0_i64,
-                &started_at,
+                &None::<i64>,           // row count unknown for a failed run
+                &None::<DateTime<Utc>>, // no data snapshot completed
                 &SOURCE_REVISION,
                 &started_at,
                 &finished_at,
@@ -490,6 +547,20 @@ mod tests {
         }
         out.push(if is_null { None } else { Some(cur) });
         out
+    }
+
+    #[test]
+    fn swap_safety_rejects_empty_first_load() {
+        assert!(check_swap_safety(None, 0).is_err());
+        assert!(check_swap_safety(None, 1).is_ok());
+    }
+
+    #[test]
+    fn swap_safety_rejects_less_than_half_of_loaded_rows() {
+        assert!(check_swap_safety(Some(100), 49).is_err());
+        assert!(check_swap_safety(Some(100), 50).is_ok());
+        assert!(check_swap_safety(Some(100), 101).is_ok());
+        assert!(check_swap_safety(Some(122_372), 122_371).is_ok());
     }
 
     #[test]

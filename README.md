@@ -96,6 +96,19 @@ data_as_of | source_revision
 
 The connecting role needs `USAGE` and `CREATE` on the `asninfo` schema (or database-level `CREATE` so the loader can create the schema on the first run); the loader owns the tables it creates. Consider keeping credentials in a root-owned env file rather than passing `--database-url` on the command line.
 
+Additional operational notes:
+
+- Concurrent `pg-write` runs are serialized with a PostgreSQL advisory lock held for the whole load: a second run waits for the first to finish instead of interfering with the shared staging table.
+- A safety guard refuses the swap when the loaded dataset is empty, or has fewer than half the rows currently in `asninfo.current`, so an upstream source failure cannot replace a healthy table with a broken snapshot.
+- The swap replaces `asninfo.current` with a new table, so per-table GRANTs do not carry over. Grant read access to consumers via default privileges, which the renamed table inherits:
+
+```sql
+ALTER DEFAULT PRIVILEGES FOR ROLE asninfo_loader IN SCHEMA asninfo
+  GRANT SELECT ON TABLES TO <consumer_role>;
+```
+
+- Views or foreign keys depending on `asninfo.current` would block the swap; the loader fails loudly rather than silently dropping them.
+
 ### Examples
 
 - Export JSONL with full fields:
