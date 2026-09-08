@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## Unreleased
+
+### New features
+
+- New `pg-write` subcommand: bulk-write the full ASN info dataset into PostgreSQL via streaming `COPY`, with an atomic staging-table swap and per-run provenance in `asninfo.ingest_run`.
+
 ## v0.4.3 - 2025-10-29
 
 * update `bgpkit-commons`, `oneio`, and `peeringdb-rs` to resolve potential rustls provider issue

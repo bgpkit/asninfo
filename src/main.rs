@@ -26,6 +26,8 @@ use tracing::{error, info};
 
 mod api;
 use crate::api::{build_router, load_asn_map_out, start_updater, AppState};
+mod pg_write;
+use crate::pg_write::pg_write_cmd;
 
 #[derive(Parser)]
 #[clap(author, version, about, long_about = None)]
@@ -57,6 +59,12 @@ enum Commands {
         /// Use simplified mode (skip heavy datasets); default false
         #[clap(long, default_value_t = false)]
         simplified: bool,
+    },
+    /// Bulk-write ASN info into PostgreSQL (full refresh, streaming COPY, atomic table swap)
+    PgWrite {
+        /// PostgreSQL connection URL (defaults to the DATABASE_URL environment variable)
+        #[clap(long, env = "DATABASE_URL")]
+        database_url: Option<String>,
     },
 }
 
@@ -142,6 +150,17 @@ async fn main() {
                 exit(code);
             }
         }
+        Commands::PgWrite { database_url } => {
+            let Some(database_url) = database_url else {
+                error!(
+                    "DATABASE_URL is not set; pass --database-url or set the DATABASE_URL environment variable"
+                );
+                exit(10);
+            };
+            if let Err(code) = pg_write_cmd(&database_url).await {
+                exit(code);
+            }
+        }
     }
 }
 
@@ -178,7 +197,7 @@ fn generate_cmd(path: &str, simplified_flag: bool) -> Result<(), i32> {
     info!("export format: {}", &format);
 
     info!("writing asn info data to '{}' ...", &path);
-    let mut writer = match oneio::get_writer(&path) {
+    let mut writer = match oneio::get_writer(path) {
         Ok(w) => w,
         Err(e) => {
             error!("failed to open writer for path '{}': {}", path, e);
@@ -186,7 +205,7 @@ fn generate_cmd(path: &str, simplified_flag: bool) -> Result<(), i32> {
         }
     };
     let mut info_vec = as_info_map.values().collect::<Vec<_>>();
-    info_vec.sort_by(|a, b| a.asn.cmp(&b.asn));
+    info_vec.sort_by_key(|a| a.asn);
 
     match format {
         ExportFormat::JSON | ExportFormat::JSONL => {
@@ -267,7 +286,7 @@ fn generate_cmd(path: &str, simplified_flag: bool) -> Result<(), i32> {
             return Err(3);
         } else {
             let (bucket, key) = oneio::s3_url_parse(&upload_path).unwrap();
-            match oneio::s3_upload(&bucket, &key, &path) {
+            match oneio::s3_upload(&bucket, &key, path) {
                 Ok(_) => {
                     // try to do send a success message to
                     if let Ok(raw_url) = dotenvy::var("ASNINFO_HEARTBEAT_URL") {

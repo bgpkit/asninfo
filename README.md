@@ -31,7 +31,7 @@ cargo binstall asninfo
 
 ## Commands
 
-The CLI provides two subcommands: generate and serve.
+The CLI provides three subcommands: generate, serve, and pg-write.
 
 ```shell
 asninfo generate [OPTIONS] [PATH]
@@ -52,6 +52,49 @@ Options:
       --refresh-secs <SECS>  Background refresh interval in seconds (default: 21600)
       --simplified           Use simplified mode (skip heavy datasets)
 ```
+
+### PostgreSQL import (pg-write)
+
+Bulk-write the full ASN info dataset into PostgreSQL for SQL analytics:
+
+```shell
+asninfo pg-write --database-url "$DATABASE_URL"
+# or, using the environment variable:
+export DATABASE_URL="postgres://user:password@localhost:5432/asninfo"
+asninfo pg-write
+```
+
+What it does:
+
+- Loads the full ASN info dataset (ASN names, as2org, population, hegemony, and PeeringDB data).
+- Streams all rows into a staging table with `COPY` (schema `asninfo`, table `current_staging`).
+- Builds indexes on the staging table, including trigram GIN indexes on name/org_name when the `pg_trgm` extension is installed (skipped with a warning otherwise).
+- Atomically swaps the staging table into place as `asninfo.current` in a single transaction, so readers never see an empty table.
+- Records every run in `asninfo.ingest_run` (task, status, row count, data_as_of, source_revision, start/finish time, duration, and error message on failure).
+- Creates the `asninfo` schema and tables automatically if they do not exist. Requires a PostgreSQL 10+ server (`GENERATED ALWAYS AS IDENTITY`).
+
+Options:
+
+```shell
+asninfo pg-write [OPTIONS]
+
+Options:
+      --database-url <DATABASE_URL>  PostgreSQL connection URL (default: DATABASE_URL environment variable)
+```
+
+Note: `--database-url` and the `DATABASE_URL` environment variable are equivalent; the flag takes precedence when both are set.
+
+The `asninfo.current` row shape is:
+
+```
+asn (bigint PK) | name | country | country_name | org_id | org_name
+population JSONB | hegemony JSONB | peeringdb JSONB
+data_as_of | source_revision
+```
+
+`org_id`/`org_name` and the JSONB columns are SQL NULL when the underlying source carries no data for the ASN.
+
+The connecting role needs `USAGE` and `CREATE` on the `asninfo` schema (or database-level `CREATE` so the loader can create the schema on the first run); the loader owns the tables it creates. Consider keeping credentials in a root-owned env file rather than passing `--database-url` on the command line.
 
 ### Examples
 
