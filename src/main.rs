@@ -296,7 +296,7 @@ fn generate_cmd(path: &str, simplified_flag: bool) -> Result<(), i32> {
                             return Err(4);
                         }
                         info!("sending heartbeat to configured URL");
-                        if let Err(e) = oneio::read_to_string(&heartbeat_url) {
+                        if let Err(e) = oneio::read_to_bytes(&heartbeat_url).map(|_| ()) {
                             error!("failed to send heartbeat: {e}");
                             return Err(4);
                         }
