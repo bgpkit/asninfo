@@ -184,7 +184,9 @@ fn generate_cmd(path: &str, simplified_flag: bool) -> Result<(), i32> {
 
     info!("loading asn info data ...");
     let mut commons = bgpkit_commons::BgpkitCommons::new();
-    let mut asinfo = bgpkit_commons::asinfo::AsInfoBuilder::new().with_as2org();
+    let mut asinfo = bgpkit_commons::asinfo::AsInfoBuilder::new()
+        .with_as2org()
+        .with_delegated();
     if load_population {
         asinfo = asinfo.with_population();
     }
