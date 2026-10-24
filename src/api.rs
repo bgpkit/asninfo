@@ -87,7 +87,17 @@ pub fn load_asn_map_out(simplified: bool) -> Result<(HashMap<u32, AsInfoOut>, St
 
     info!("loading asn info data ...");
     let mut commons = bgpkit_commons::BgpkitCommons::new();
-    if let Err(e) = commons.load_asinfo(true, load_population, load_hegemony, load_peeringdb) {
+    let mut asinfo = bgpkit_commons::asinfo::AsInfoBuilder::new().with_as2org();
+    if load_population {
+        asinfo = asinfo.with_population();
+    }
+    if load_hegemony {
+        asinfo = asinfo.with_hegemony();
+    }
+    if load_peeringdb {
+        asinfo = asinfo.with_peeringdb();
+    }
+    if let Err(e) = commons.load_asinfo_with(asinfo) {
         error!("failed to load asn info data: {e}");
         return Err(1);
     };
