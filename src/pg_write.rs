@@ -137,7 +137,12 @@ async fn execute_pg_write(
 fn load_dataset() -> Result<(BgpkitCommons, Vec<AsInfo>), (i32, String)> {
     info!("loading asn info data ...");
     let mut commons = BgpkitCommons::new();
-    if let Err(e) = commons.load_asinfo(true, true, true, true) {
+    let asinfo = bgpkit_commons::asinfo::AsInfoBuilder::new()
+        .with_as2org()
+        .with_population()
+        .with_hegemony()
+        .with_peeringdb();
+    if let Err(e) = commons.load_asinfo_with(asinfo) {
         return Err((11, format!("failed to load asn info data: {e}")));
     }
     if let Err(e) = commons.load_countries() {
@@ -632,6 +637,9 @@ mod tests {
             population: Some(population),
             hegemony: None,
             peeringdb: None,
+            delegated: None,
+            allocation_status: bgpkit_commons::asinfo::AllocationStatus::Allocated,
+            irr: Vec::new(),
         };
         let line = map_as_info_row(&info, "United States", "2026-09-08T00:00:00+00:00").unwrap();
         let fields = parse_csv_line(&line);
@@ -666,6 +674,9 @@ mod tests {
             population: None,
             hegemony: None,
             peeringdb: None,
+            delegated: None,
+            allocation_status: bgpkit_commons::asinfo::AllocationStatus::Allocated,
+            irr: Vec::new(),
         };
         let line = map_as_info_row(&info, "", "2026-09-08T00:00:00+00:00").unwrap();
         let fields = parse_csv_line(&line);

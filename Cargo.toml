@@ -13,7 +13,7 @@ A utility tool to export ASN information to JSON files.
 keywords = ["bgp", "bgpkit"]
 
 [dependencies]
-bgpkit-commons = "0.9.6"
+bgpkit-commons = "0.14"
 serde_json = "1"
 oneio = { version = "0.27", default-features = false, features = ["https", "s3"] }
 tracing-subscriber = "0.3"
