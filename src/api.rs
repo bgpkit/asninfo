@@ -87,7 +87,9 @@ pub fn load_asn_map_out(simplified: bool) -> Result<(HashMap<u32, AsInfoOut>, St
 
     info!("loading asn info data ...");
     let mut commons = bgpkit_commons::BgpkitCommons::new();
-    let mut asinfo = bgpkit_commons::asinfo::AsInfoBuilder::new().with_as2org();
+    let mut asinfo = bgpkit_commons::asinfo::AsInfoBuilder::new()
+        .with_as2org()
+        .with_delegated();
     if load_population {
         asinfo = asinfo.with_population();
     }

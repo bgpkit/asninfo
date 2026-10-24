@@ -139,6 +139,7 @@ fn load_dataset() -> Result<(BgpkitCommons, Vec<AsInfo>), (i32, String)> {
     let mut commons = BgpkitCommons::new();
     let asinfo = bgpkit_commons::asinfo::AsInfoBuilder::new()
         .with_as2org()
+        .with_delegated()
         .with_population()
         .with_hegemony()
         .with_peeringdb();
